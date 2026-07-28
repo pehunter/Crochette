@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    {% if lights %}
+        {% for light in lights %}
+            <form action={% url "light:update" light.id %} method="post">
+                {% csrf_token %}
+                <label for="name" >Name</label><br>
+                <input type="text" id="name" name="name" value="{{ light.name }}"><br>
+                <label for="color">Color</label><br>
+                <input type="color" id="color" name="color" value={{ light.getColorAsCSS }}><br>
+                <label for="brightness">Brightness</label><br>
+                <input type="range" id="brightness" name="brightness" min="0" max="100" value={{ light.getBrightnessAsPercent }}><br>
+                <input type="submit"><br>
+            </form>
+        {% endfor %}
+    {% else %}
+    <h1>No lights found</h1>
+    {% endif %}
+  </body>
+</html>
