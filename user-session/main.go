@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,27 +14,38 @@ import (
 )
 
 type user struct {
-	Id       uint32
+	Id       uint64
 	Name     string `json:name`
 	Password string `json:password`
 }
 
 type session struct {
 	SessionID  string
-	UserID     uint32
+	UserID     uint64
 	LastUpdate time.Time
 }
 
+type SessionMap struct {
+	data map[string]session
+	lock sync.Mutex
+}
+
+type ActiveUserMap struct {
+	data map[uint64]string
+	lock sync.Mutex
+}
+
 // User ID -> Session
-var activeUsers map[uint32]string
+var activeUsers ActiveUserMap
 
 // Session ID -> Session
-var sessions map[string]session
+var sessions SessionMap
 
 // Get a fresh, new session key
 var sessionCount uint64
 
 func getSessionKey() string {
+	sessionCount += 1
 	return strconv.FormatUint(sessionCount, 10)
 }
 
@@ -57,41 +69,119 @@ func addUser(db *pgx.Conn) gin.HandlerFunc {
 		var user user
 
 		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, map[string]any{"error": "request does not contain username and password"})
+			c.String(http.StatusBadRequest, "Request has missing parameters.")
 			return
 		}
 
 		//Authenticate user
 		user, err := authUser(db, user.Name, user.Password)
 		if err != nil {
-			c.JSON(404, map[string]any{"error": err.Error()})
-		}
-
-		//Check if the user already has a sesson. If so, stop
-		if _, ok := activeUsers[user.Id]; ok == true {
-			c.JSON(http.StatusTeapot, map[string]any{"error": "user already has an active session"})
+			c.String(http.StatusNotFound, err.Error())
 			return
 		}
 
+		//Lock activeUsers and defer unlock
+		activeUsers.lock.Lock()
+		defer activeUsers.lock.Unlock()
+
+		//Check if the user already has a sesson. If so, stop
+		if _, ok := activeUsers.data[user.Id]; ok == true {
+			c.String(http.StatusUnauthorized, "User has already logged in.")
+			return
+		}
+
+		//Acquire session lock
+		sessions.lock.Lock()
+		defer sessions.lock.Unlock()
+
 		//Insert them into the session
 		sessionKey := getSessionKey()
-		sessions[sessionKey] = session{
+		sessions.data[sessionKey] = session{
 			UserID:     user.Id,
 			SessionID:  sessionKey,
 			LastUpdate: time.Now(),
 		}
-		activeUsers[user.Id] = sessionKey
+		activeUsers.data[user.Id] = sessionKey
 
 		//Return status
-		c.String(200, sessionKey)
+		c.String(http.StatusOK, sessionKey)
+	}
+}
+
+// Get the user associated with the session
+func sessionUser(c *gin.Context) {
+	sessionKey, ok := c.Params.Get("session")
+	if !ok {
+		c.String(http.StatusBadRequest, "No session key provided.")
+		return
+	}
+
+	//Lock sessions
+	sessions.lock.Lock()
+	defer sessions.lock.Unlock()
+
+	if session, ok := sessions.data[sessionKey]; !ok {
+		c.String(http.StatusNotFound, "The session key has expired.")
+	} else {
+		fmt.Fprintf(os.Stdout, "%s\n", session.LastUpdate.String())
+
+		//Refresh session end time
+		session.LastUpdate = time.Now()
+		sessions.data[sessionKey] = session
+
+		//Return user ID
+		c.String(http.StatusOK, strconv.FormatUint(session.UserID, 10))
+	}
+
+}
+
+// How long a session will last
+var sessionTimeout time.Duration
+
+// Remove old sessions
+func clearOldSessions() {
+	//Lock sessions
+	sessions.lock.Lock()
+	defer sessions.lock.Unlock()
+
+	//Iterate sessions and find ones < timeout
+	expiredSessions := make([]string, len(sessions.data))
+	for sessionKey, session := range sessions.data {
+		timeDiff := time.Since(session.LastUpdate)
+
+		//Session timeout reached
+		if timeDiff > sessionTimeout {
+			expiredSessions = append(expiredSessions, sessionKey)
+		}
+	}
+
+	//Return now if all sessions are valid
+	if len(expiredSessions) <= 0 {
+		return
+	}
+
+	activeUsers.lock.Lock()
+	defer activeUsers.lock.Unlock()
+
+	//Remove expired keys
+	//From sessions AND users
+	for _, expiredKey := range expiredSessions {
+		session := sessions.data[expiredKey]
+		fmt.Printf("Deleting %s", expiredKey)
+		//Remove from sessions
+		delete(sessions.data, expiredKey)
+
+		//Remove user from activeUsers
+		delete(activeUsers.data, session.UserID)
 	}
 }
 
 func main() {
 	//Make sessions/activeUsers map
-	sessions = make(map[string]session)
-	activeUsers = make(map[uint32]string)
+	sessions = SessionMap{data: make(map[string]session)}
+	activeUsers = ActiveUserMap{data: make(map[uint64]string)}
 	sessionCount = 0
+	sessionTimeout = time.Second * 18
 
 	//Connect to Postgres
 	conn, err := pgx.Connect(context.Background(), "postgres://postgres:@localhost:5432/mydb")
@@ -101,8 +191,18 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
+	//Start session garbage collection
+	go func() {
+		for {
+			fmt.Printf("Cleaning old sessions...\n")
+			clearOldSessions()
+			time.Sleep(time.Second * 5)
+		}
+	}()
+
 	router := gin.Default()
 	router.POST("/login", addUser(conn))
+	router.GET("/:session", sessionUser)
 
 	router.Run("localhost:8080")
 }
