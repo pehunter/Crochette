@@ -3,15 +3,29 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Netflix/go-env"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 )
+
+type PostgresInfo struct {
+	URL      string `env:"postgres_url"`
+	Port     int32  `env:"postgres_port"`
+	User     string `env:"POSTGRES_USER"`
+	Password string `env:"POSTGRES_PASSWORD"`
+	Database string `env:"POSTGRES_DB"`
+}
+
+func (pg PostgresInfo) toUrl() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s", pg.User, pg.Password, pg.URL, pg.Port, pg.Database)
+}
 
 type user struct {
 	Id       uint64
@@ -177,6 +191,15 @@ func clearOldSessions() {
 }
 
 func main() {
+	//Parse Postgres info
+	var postgres PostgresInfo
+
+	_, err := env.UnmarshalFromEnviron(&postgres)
+
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+	}
+
 	//Make sessions/activeUsers map
 	sessions = SessionMap{data: make(map[string]session)}
 	activeUsers = ActiveUserMap{data: make(map[uint64]string)}
@@ -184,8 +207,7 @@ func main() {
 	sessionTimeout = time.Second * 18
 
 	//Connect to Postgres
-	fmt.Printf("UM??")
-	conn, err := pgx.Connect(context.Background(), "postgres://postgres:password@postgresql:5432/mydb")
+	conn, err := pgx.Connect(context.Background(), postgres.toUrl())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not connect to postgres :( %s", err)
 		return
