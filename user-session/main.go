@@ -184,7 +184,8 @@ func main() {
 	sessionTimeout = time.Second * 18
 
 	//Connect to Postgres
-	conn, err := pgx.Connect(context.Background(), "postgres://postgres:@localhost:5432/mydb")
+	fmt.Printf("UM??")
+	conn, err := pgx.Connect(context.Background(), "postgres://postgres:password@postgresql:5432/mydb")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not connect to postgres :( %s", err)
 		return
@@ -194,7 +195,6 @@ func main() {
 	//Start session garbage collection
 	go func() {
 		for {
-			fmt.Printf("Cleaning old sessions...\n")
 			clearOldSessions()
 			time.Sleep(time.Second * 5)
 		}
@@ -204,5 +204,5 @@ func main() {
 	router.POST("/login", addUser(conn))
 	router.GET("/:session", sessionUser)
 
-	router.Run("localhost:8080")
+	router.Run("0.0.0.0:8080")
 }

@@ -1,4 +1,4 @@
-module api
+module sessions
 
 go 1.26.5
 

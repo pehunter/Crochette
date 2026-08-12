@@ -146,7 +146,7 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 
 func main() {
 	//Connect to Postgres
-	conn, err := pgx.Connect(context.Background(), "postgres://postgres:@localhost:5432/mydb")
+	conn, err := pgx.Connect(context.Background(), "postgres://postgres:password@postgresql:5432/mydb")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not connect to postgres :( %s", err)
 		return
@@ -158,5 +158,5 @@ func main() {
 	router.GET("/patterns/:id", created_patterns(conn))
 	router.GET("/progress/:id", created_progress(conn))
 
-	router.Run("localhost:8080")
+	router.Run("0.0.0.0:8080")
 }
