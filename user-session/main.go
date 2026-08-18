@@ -13,6 +13,7 @@ import (
 	"github.com/Netflix/go-env"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type PostgresInfo struct {
@@ -25,6 +26,15 @@ type PostgresInfo struct {
 
 func (pg PostgresInfo) toUrl() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s", pg.User, pg.Password, pg.URL, pg.Port, pg.Database)
+}
+
+type RedisInfo struct {
+	URL  string `env:"redis_url"`
+	Port int32  `env:"redis_port"`
+}
+
+func (rd RedisInfo) toUrl() string {
+	return fmt.Sprintf("%s:%d", rd.URL, rd.Port)
 }
 
 type user struct {
@@ -76,8 +86,31 @@ func authUser(db *pgx.Conn, username string, password string) (user, error) {
 	return user, nil
 }
 
+// Cache a session in redis
+func cacheSession(reds *redis.Client, sessionKey string, uid uint64) error {
+	_, err := reds.ZAdd(context.Background(), "last_accessed", redis.Z{Member: sessionKey, Score: float64(time.Now().Unix())}).Result()
+
+	if err != nil {
+		return err
+	}
+
+	reds.HSet(context.Background(), "session_to_user", map[string]uint64{sessionKey: uid}).Result()
+
+	if err != nil {
+		return err
+	}
+
+	reds.HSet(context.Background(), "user_to_session", map[uint64]string{uid: sessionKey}).Result()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Add a user to the session
-func addUser(db *pgx.Conn) gin.HandlerFunc {
+func addUser(db *pgx.Conn, reds *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		//Get user login
 		var user user
@@ -95,27 +128,31 @@ func addUser(db *pgx.Conn) gin.HandlerFunc {
 		}
 
 		//Lock activeUsers and defer unlock
-		activeUsers.lock.Lock()
-		defer activeUsers.lock.Unlock()
+		// activeUsers.lock.Lock()
+		// defer activeUsers.lock.Unlock()
 
 		//Check if the user already has a sesson. If so, stop
-		if _, ok := activeUsers.data[user.Id]; ok == true {
+		if _, err := reds.HGet(context.Background(), "user_to_session", strconv.FormatUint(user.Id, 10)).Result(); err == nil {
 			c.String(http.StatusUnauthorized, "User has already logged in.")
 			return
 		}
 
 		//Acquire session lock
-		sessions.lock.Lock()
-		defer sessions.lock.Unlock()
+		// sessions.lock.Lock()
+		// defer sessions.lock.Unlock()
 
 		//Insert them into the session
 		sessionKey := getSessionKey()
-		sessions.data[sessionKey] = session{
-			UserID:     user.Id,
-			SessionID:  sessionKey,
-			LastUpdate: time.Now(),
+		err = cacheSession(reds, sessionKey, user.Id)
+		if err != nil {
+			log.Fatalf(err.Error())
 		}
-		activeUsers.data[user.Id] = sessionKey
+		// sessions.data[sessionKey] = session{
+		// 	UserID:     user.Id,
+		// 	SessionID:  sessionKey,
+		// 	LastUpdate: time.Now(),
+		// }
+		// activeUsers.data[user.Id] = sessionKey
 
 		//Return status
 		c.String(http.StatusOK, sessionKey)
@@ -153,48 +190,65 @@ func sessionUser(c *gin.Context) {
 var sessionTimeout time.Duration
 
 // Remove old sessions
-func clearOldSessions() {
+func clearOldSessions(reds *redis.Client) {
 	//Lock sessions
-	sessions.lock.Lock()
-	defer sessions.lock.Unlock()
+	// sessions.lock.Lock()
+	// defer sessions.lock.Unlock()
 
-	//Iterate sessions and find ones < timeout
-	expiredSessions := make([]string, len(sessions.data))
-	for sessionKey, session := range sessions.data {
-		timeDiff := time.Since(session.LastUpdate)
+	//Delete out-of-date entries
+	cutoff := time.Now().Add(-sessionTimeout).Unix()
+	_, err := reds.ZRemRangeByScore(context.Background(), "last_accessed", strconv.FormatInt(cutoff, 10), strconv.FormatInt(time.Now().Unix(), 10)).Result()
 
-		//Session timeout reached
-		if timeDiff > sessionTimeout {
-			expiredSessions = append(expiredSessions, sessionKey)
-		}
-	}
-
-	//Return now if all sessions are valid
-	if len(expiredSessions) <= 0 {
+	if err != nil {
+		fmt.Printf("%s", err.Error())
 		return
 	}
 
-	activeUsers.lock.Lock()
-	defer activeUsers.lock.Unlock()
+	// expiredSessions := make([]string, len(sessions.data))
+	// for sessionKey, session := range sessions.data {
+	// 	timeDiff := time.Since(session.LastUpdate)
+
+	// 	//Session timeout reached
+	// 	if timeDiff > sessionTimeout {
+	// 		expiredSessions = append(expiredSessions, sessionKey)
+	// 	}
+	// }
+
+	// //Return now if all sessions are valid
+	// if len(expiredSessions) <= 0 {
+	// 	return
+	// }
+
+	// activeUsers.lock.Lock()
+	// defer activeUsers.lock.Unlock()
 
 	//Remove expired keys
 	//From sessions AND users
-	for _, expiredKey := range expiredSessions {
-		session := sessions.data[expiredKey]
-		fmt.Printf("Deleting %s", expiredKey)
-		//Remove from sessions
-		delete(sessions.data, expiredKey)
+	// for _, expiredKey := range expiredSessions {
+	// 	session := sessions.data[expiredKey]
+	// 	fmt.Printf("Deleting %s", expiredKey)
+	// 	//Remove from sessions
+	// 	delete(sessions.data, expiredKey)
 
-		//Remove user from activeUsers
-		delete(activeUsers.data, session.UserID)
-	}
+	// 	//Remove user from activeUsers
+	// 	delete(activeUsers.data, session.UserID)
+	// }
 }
 
 func main() {
-	//Parse Postgres info
+	//Parse Postgres & Redis info
 	var postgres PostgresInfo
+	var reds RedisInfo
 
+	//Postgres
 	_, err := env.UnmarshalFromEnviron(&postgres)
+
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+	}
+
+	//Redis
+	_, err = env.UnmarshalFromEnviron(&reds)
 
 	if err != nil {
 		log.Fatalf("%s", err.Error())
@@ -214,16 +268,24 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
+	//Connect to Redis
+	rConn := redis.NewClient(&redis.Options{
+		Addr:     reds.toUrl(),
+		Password: "", // no password docs
+		DB:       0,  // use default DB
+		Protocol: 2,
+	})
+
 	//Start session garbage collection
 	go func() {
 		for {
-			clearOldSessions()
+			clearOldSessions(rConn)
 			time.Sleep(time.Second * 5)
 		}
 	}()
 
 	router := gin.Default()
-	router.POST("/login", addUser(conn))
+	router.POST("/login", addUser(conn, rConn))
 	router.GET("/:session", sessionUser)
 
 	router.Run("0.0.0.0:8080")
