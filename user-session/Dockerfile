@@ -1,7 +1,11 @@
 FROM golang:latest
+WORKDIR /common
+
+COPY common .
+
 WORKDIR /app
 
-COPY . .
+COPY user-session .
 
 # Get packages
 RUN go get .

@@ -1,4 +1,4 @@
-module user.info/m/v2
+module crochet.com/userinfo
 
 go 1.26.5
 
