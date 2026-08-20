@@ -19,10 +19,6 @@ var userQueries = map[string]string{
 	"get_progresses": "select id from crochet_progress where user_id = $1",
 }
 
-func jsonError(errar string) gin.H {
-	return gin.H{"error": errar}
-}
-
 // Attempt to retrieve user information from database
 func getUserFromName(db *pgx.Conn, name string) (uint64, error) {
 	var userID uint64
@@ -40,13 +36,13 @@ func register(db *pgx.Conn) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var newUser common.User
 		if err := ctx.BindJSON(&newUser); err != nil {
-			ctx.JSON(http.StatusBadRequest, jsonError("Request is not formatted properly."))
+			ctx.JSON(http.StatusBadRequest, common.JsonError("Request is not formatted properly."))
 			return
 		}
 
 		//Attempt to retrieve user from database. If it works, then the user is already registered.
 		if _, err := getUserFromName(db, newUser.Name); err == nil {
-			ctx.JSON(http.StatusConflict, jsonError("A user with this name already exists"))
+			ctx.JSON(http.StatusConflict, common.JsonError("A user with this name already exists"))
 			return
 		}
 
@@ -54,7 +50,7 @@ func register(db *pgx.Conn) gin.HandlerFunc {
 		row, err := db.Query(context.Background(), userQueries["add"], newUser.Name, newUser.Password)
 		if err != nil {
 			log.Fatalln(err.Error())
-			ctx.JSON(http.StatusInternalServerError, jsonError("An error occurred trying to insert the user"))
+			ctx.JSON(http.StatusInternalServerError, common.JsonError("An error occurred trying to insert the user"))
 			return
 		}
 
@@ -67,7 +63,7 @@ func register(db *pgx.Conn) gin.HandlerFunc {
 
 		if err != nil {
 			log.Fatalln(err.Error())
-			ctx.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
+			ctx.JSON(http.StatusInternalServerError, common.JsonError("An internal server error occurred"))
 			return
 		}
 
@@ -82,7 +78,7 @@ func created_patterns(db *pgx.Conn) gin.HandlerFunc {
 		//Check ID param
 		uid, ok := c.Params.Get("id")
 		if !ok {
-			c.JSON(http.StatusBadRequest, jsonError("No User ID was given"))
+			c.JSON(http.StatusBadRequest, common.JsonError("No User ID was given"))
 			return
 		}
 
@@ -90,7 +86,7 @@ func created_patterns(db *pgx.Conn) gin.HandlerFunc {
 		rows, err := db.Query(context.Background(), userQueries["get_patterns"], uid)
 		if err != nil {
 			log.Fatalln(err.Error())
-			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
+			c.JSON(http.StatusInternalServerError, common.JsonError("An internal server error occurred"))
 			return
 		}
 
@@ -103,7 +99,7 @@ func created_patterns(db *pgx.Conn) gin.HandlerFunc {
 
 		if err != nil {
 			log.Fatalln(err.Error())
-			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
+			c.JSON(http.StatusInternalServerError, common.JsonError("An internal server error occurred"))
 			return
 		}
 
@@ -118,7 +114,7 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 		//Check ID param
 		uid, ok := c.Params.Get("id")
 		if !ok {
-			c.JSON(http.StatusBadRequest, jsonError("No User ID was given"))
+			c.JSON(http.StatusBadRequest, common.JsonError("No User ID was given"))
 			return
 		}
 
@@ -126,7 +122,7 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 		rows, err := db.Query(context.Background(), userQueries["get_progresses"], uid)
 		if err != nil {
 			log.Fatalln(err.Error())
-			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
+			c.JSON(http.StatusInternalServerError, common.JsonError("An internal server error occurred"))
 			return
 		}
 
@@ -139,7 +135,7 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 
 		if err != nil {
 			log.Fatalln(err.Error())
-			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
+			c.JSON(http.StatusInternalServerError, common.JsonError("An internal server error occurred"))
 			return
 		}
 
