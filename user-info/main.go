@@ -3,18 +3,20 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
 	"net/http"
-	"os"
+
+	common "crochet.com/common"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 )
 
-type user struct {
-	Id       uint32
-	Name     string `json:name`
-	Password string `json:password`
+var userQueries = map[string]string{
+	"from_name":      "select id from crochet_user where name = $1",
+	"add":            "insert into crochet_user (name, password) values ($1, $2) returning id",
+	"get_patterns":   "select id from crochet_pattern where creator_id = $1",
+	"get_progresses": "select id from crochet_progress where user_id = $1",
 }
 
 func jsonError(errar string) gin.H {
@@ -22,35 +24,36 @@ func jsonError(errar string) gin.H {
 }
 
 // Attempt to retrieve user information from database
-func getUser(db *pgx.Conn, name string) (user, error) {
-	var aUser user
-	err := db.QueryRow(context.Background(), "select id, name, password from crochet_user where name = $1", name).Scan(&aUser.Id, &aUser.Name, &aUser.Password)
+func getUserFromName(db *pgx.Conn, name string) (uint64, error) {
+	var userID uint64
+	err := db.QueryRow(context.Background(), userQueries["from_name"], name).Scan(&userID)
 
 	if err != nil {
-		return aUser, errors.New("User does not exist")
+		return 0, errors.New("User does not exist")
 	}
 
-	return aUser, nil
+	return userID, nil
 }
 
+// Register user
 func register(db *pgx.Conn) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		var newUser user
+		var newUser common.User
 		if err := ctx.BindJSON(&newUser); err != nil {
 			ctx.JSON(http.StatusBadRequest, jsonError("Request is not formatted properly."))
 			return
 		}
 
 		//Attempt to retrieve user from database. If it works, then the user is already registered.
-		if _, err := getUser(db, newUser.Name); err == nil {
+		if _, err := getUserFromName(db, newUser.Name); err == nil {
 			ctx.JSON(http.StatusConflict, jsonError("A user with this name already exists"))
 			return
 		}
 
 		//Everything good; insert the user
-		row, err := db.Query(context.Background(), "insert into crochet_user (name, password) values ($1, $2) returning id", newUser.Name, newUser.Password)
+		row, err := db.Query(context.Background(), userQueries["add"], newUser.Name, newUser.Password)
 		if err != nil {
-			fmt.Printf("%s", err.Error())
+			log.Fatalln(err.Error())
 			ctx.JSON(http.StatusInternalServerError, jsonError("An error occurred trying to insert the user"))
 			return
 		}
@@ -63,8 +66,8 @@ func register(db *pgx.Conn) gin.HandlerFunc {
 		})
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err.Error())
-			ctx.JSON(http.StatusInternalServerError, jsonError("An internal serfver error occurred"))
+			log.Fatalln(err.Error())
+			ctx.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
 			return
 		}
 
@@ -84,9 +87,9 @@ func created_patterns(db *pgx.Conn) gin.HandlerFunc {
 		}
 
 		//Attempt to fetch rows
-		rows, err := db.Query(context.Background(), "select id from crochet_pattern where creator_id = $1", uid)
+		rows, err := db.Query(context.Background(), userQueries["get_patterns"], uid)
 		if err != nil {
-			fmt.Printf("%s", err.Error())
+			log.Fatalln(err.Error())
 			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
 			return
 		}
@@ -99,7 +102,7 @@ func created_patterns(db *pgx.Conn) gin.HandlerFunc {
 		})
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err.Error())
+			log.Fatalln(err.Error())
 			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
 			return
 		}
@@ -120,9 +123,9 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 		}
 
 		//Attempt to fetch rows
-		rows, err := db.Query(context.Background(), "select id from crochet_progress where user_id = $1", uid)
+		rows, err := db.Query(context.Background(), userQueries["get_progresses"], uid)
 		if err != nil {
-			fmt.Printf("%s", err.Error())
+			log.Fatalln(err.Error())
 			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
 			return
 		}
@@ -135,7 +138,7 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 		})
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err.Error())
+			log.Fatalln(err.Error())
 			c.JSON(http.StatusInternalServerError, jsonError("An internal server error occurred"))
 			return
 		}
@@ -145,10 +148,16 @@ func created_progress(db *pgx.Conn) gin.HandlerFunc {
 }
 
 func main() {
-	//Connect to Postgres
-	conn, err := pgx.Connect(context.Background(), "postgres://postgres:password@postgresql:5432/mydb")
+	//Parse Postgres info
+	postgres, err := common.NewDatabaseFromEnv[common.PostgresInfo]()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not connect to postgres :( %s", err)
+		log.Fatal(err.Error())
+	}
+
+	//Connect to Postgres
+	conn, err := pgx.Connect(context.Background(), postgres.GetUrl())
+	if err != nil {
+		log.Fatalf("Could not connect to postgres :( %s\n", err)
 		return
 	}
 	defer conn.Close(context.Background())

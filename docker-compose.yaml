@@ -1,22 +1,29 @@
 services:
-  # sessions:
-  #   build:
-  #     context: .
-  #     dockerfile: user-session/Dockerfile
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - 3000:8080
-  #   depends_on:
-  #     postgresql:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   develop:
-  #     watch:
-  #       - path: .
-  #         action: rebuild
-  #         target: /app
+  sessions:
+    build:
+      context: .
+      dockerfile: user-session/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - 3000:8080
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  userinfo:
+    build:
+      context: .
+      dockerfile: user-info/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - 3001:8080
+    depends_on:
+      postgresql:
+        condition: service_healthy
 
   postgresql:
     image: postgres:latest

@@ -24,9 +24,9 @@ func getSessionKey() string {
 	return strconv.FormatUint(sessionCount, 10)
 }
 
-
 // Refresh a session's last update
 func refreshSession(reds *redis.Client, sessionKey string) error {
+	fmt.Printf("adding it..")
 	_, err := reds.ZAdd(context.Background(), "last_accessed", redis.Z{Member: sessionKey, Score: float64(time.Now().Unix())}).Result()
 
 	if err != nil {
@@ -120,10 +120,41 @@ var sessionTimeout time.Duration
 func clearOldSessions(reds *redis.Client) {
 	//Delete out-of-date entries
 	cutoff := time.Now().Add(-sessionTimeout).Unix()
-	_, err := reds.ZRemRangeByScore(context.Background(), "last_accessed", strconv.FormatInt(cutoff, 10), strconv.FormatInt(time.Now().Unix(), 10)).Result()
+
+	rows, err := reds.ZRangeArgs(context.Background(), redis.ZRangeArgs{
+		Key:     "last_accessed",
+		ByScore: true,
+		Start:   "0",
+		Stop:    strconv.FormatInt(cutoff, 10),
+	}).Result()
+
+	//Remove session from other tables
+	for _, sessionKey := range rows {
+		uid, err := reds.HGet(context.Background(), "session_to_user", sessionKey).Result()
+		if err != nil {
+			log.Print("Session was already removed")
+			continue
+		}
+		//Remove session -> user
+		_, err = reds.HDel(context.Background(), "session_to_user", sessionKey).Result()
+
+		if err != nil {
+			log.Print("???")
+		}
+
+		//Remove user ID -> session
+		_, err = reds.HDel(context.Background(), "user_to_session", uid).Result()
+
+		if err != nil {
+			log.Print("???")
+		}
+	}
+
+	//Remove keys from last accessed
+	_, err = reds.ZRemRangeByScore(context.Background(), "last_accessed", "0", strconv.FormatInt(cutoff, 10)).Result()
 
 	if err != nil {
-		fmt.Printf("%s", err.Error())
+		log.Fatalln(err.Error())
 		return
 	}
 }
