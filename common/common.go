@@ -77,6 +77,13 @@ type Pattern struct {
 	Creator uint64 `json:creator_id`
 }
 
+type Progress struct {
+	Id          uint64
+	Progression uint64 `json:progress`
+	Pattern     uint64 `json:pattern_id`
+	User        uint64 `json:user_id`
+}
+
 func JsonError(errar string) gin.H {
 	return gin.H{"error": errar}
 }

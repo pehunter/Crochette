@@ -66,6 +66,7 @@ func createPattern(db *pgx.Conn) gin.HandlerFunc {
 	}
 }
 
+// Get pattern details for a given pattern ID
 func getPatternDetails(db *pgx.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		patternId, exists := c.Params.Get("id")
