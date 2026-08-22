@@ -25,6 +25,30 @@ services:
       postgresql:
         condition: service_healthy
 
+  patterninfo:
+    build:
+      context: .
+      dockerfile: pattern-info/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - 3002:8080
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  progressinfo:
+    build:
+      context: .
+      dockerfile: progress-info/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - 3003:8080
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
   postgresql:
     image: postgres:latest
     env_file:

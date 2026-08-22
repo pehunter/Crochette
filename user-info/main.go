@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -39,6 +40,8 @@ func register(db *pgx.Conn) gin.HandlerFunc {
 			ctx.JSON(http.StatusBadRequest, common.JsonError("Request is not formatted properly."))
 			return
 		}
+
+		fmt.Println(newUser)
 
 		//Attempt to retrieve user from database. If it works, then the user is already registered.
 		if _, err := getUserFromName(db, newUser.Name); err == nil {

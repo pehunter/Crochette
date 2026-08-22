@@ -16,7 +16,7 @@ var progressQueries = map[string]string{
 	"exist":  "select id from crochet_progress where pattern_id=$1 and user_id=$2",
 	"insert": "insert into crochet_progress (progress, pattern_id, user_id) values (0, $1, $2) returning id",
 	"get":    "select * from crochet_progress where id=$1",
-	"update": "update crochet_progress set progress=$1 where id=$2",
+	"update": "update crochet_progress set progress=$1 where id=$2 returning id",
 }
 
 // Get progress for a pattern under a user
@@ -38,7 +38,7 @@ func createProgress(db *pgx.Conn) gin.HandlerFunc {
 
 		fmt.Println(newProgress.Pattern)
 		fmt.Println(newProgress.User)
-		
+
 		//Attempt to retrieve progress from database. If it works, then the progress is already created.
 		if _, err := getProgress(db, newProgress.Pattern, newProgress.User); err == nil {
 			ctx.JSON(http.StatusConflict, common.JsonError("A progress with this name already exists"))
@@ -87,7 +87,9 @@ func getProgressDetails(db *pgx.Conn) gin.HandlerFunc {
 		err := db.QueryRow(context.Background(), progressQueries["get"], progressId).Scan(&progress.Id, &progress.Progression, &progress.Pattern, &progress.User)
 
 		if err != nil {
+			fmt.Println(err.Error())
 			c.JSON(http.StatusNotFound, common.JsonError("A progress with that ID could not be found"))
+			return
 		}
 
 		//Return progress
@@ -95,27 +97,31 @@ func getProgressDetails(db *pgx.Conn) gin.HandlerFunc {
 	}
 }
 
+type updateRequest struct {
+	Id          uint64 `json:"id"`
+	Progression uint64 `json:"progress"`
+}
+
 // Update progress progression
 func updateProgress(db *pgx.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		request := struct {
-			id          uint64
-			progression uint64
-		}{
-			id:          0,
-			progression: 0,
-		}
+		var request updateRequest
 
 		if err := c.ShouldBind(&request); err != nil {
 			c.JSON(http.StatusBadRequest, common.JsonError("Request was not formatted properly"))
 			return
 		}
 
+		fmt.Println(request)
+
 		//Attempt to update progress
-		err := db.QueryRow(context.Background(), progressQueries["update"], request.id, request.progression).Scan()
+		var id uint64
+		err := db.QueryRow(context.Background(), progressQueries["update"], request.Progression, request.Id).Scan(&id)
 
 		if err != nil {
+			fmt.Println(err.Error())
 			c.JSON(http.StatusNotFound, common.JsonError("A progress with that ID could not be found"))
+			return
 		}
 
 		//Return progress

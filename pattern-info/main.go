@@ -30,10 +30,12 @@ func createPattern(db *pgx.Conn) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var newPattern common.Pattern
 		if err := ctx.BindJSON(&newPattern); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
+			fmt.Fprintln(os.Stderr, err.Error())
 			ctx.JSON(http.StatusBadRequest, common.JsonError("Request is not formatted properly."))
 			return
 		}
+
+		fmt.Println(newPattern)
 
 		//Attempt to retrieve pattern from database. If it works, then the pattern is already created.
 		if _, err := getPattern(db, newPattern.Name, newPattern.Id); err == nil {
@@ -81,6 +83,7 @@ func getPatternDetails(db *pgx.Conn) gin.HandlerFunc {
 
 		if err != nil {
 			c.JSON(http.StatusNotFound, common.JsonError("A pattern with that ID could not be found"))
+			return
 		}
 
 		//Return pattern

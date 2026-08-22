@@ -52,9 +52,9 @@ func NewDatabaseFromEnv[D Database]() (*D, error) {
 }
 
 type User struct {
-	Id       uint64 `json:id`
-	Name     string `json:name`
-	Password string `json:password`
+	Id       uint64 `json:"id"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
 }
 
 // Authenticate the user
@@ -72,16 +72,16 @@ func NewUserFromAuth(db *pgx.Conn, username string, password string) (User, erro
 
 type Pattern struct {
 	Id      uint64
-	Name    string `json:name`
-	Steps   string `json:steps`
-	Creator uint64 `json:creator_id`
+	Name    string `json:"name"`
+	Steps   string `json:"steps"`
+	Creator uint64 `json:"creator_id"`
 }
 
 type Progress struct {
 	Id          uint64
-	Progression uint64 `json:progress`
-	Pattern     uint64 `json:pattern_id`
-	User        uint64 `json:user_id`
+	Progression uint64 `json:"progress"`
+	Pattern     uint64 `json:"pattern_id"`
+	User        uint64 `json:"user_id"`
 }
 
 func JsonError(errar string) gin.H {
