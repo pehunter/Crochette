@@ -64,6 +64,8 @@ func addUser(db *pgx.Conn, reds *redis.Client) gin.HandlerFunc {
 			return
 		}
 
+		fmt.Println(user.Name, user.Password)
+
 		//Authenticate user
 		user, err := common.NewUserFromAuth(db, user.Name, user.Password)
 		if err != nil {

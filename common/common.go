@@ -53,7 +53,7 @@ func NewDatabaseFromEnv[D Database]() (*D, error) {
 
 type User struct {
 	Id       uint64 `json:"id"`
-	Name     string `json:"name"`
+	Name     string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -62,8 +62,9 @@ func NewUserFromAuth(db *pgx.Conn, username string, password string) (User, erro
 	//Attempt to find user with given password
 	user := User{}
 
-	err := db.QueryRow(context.Background(), "select id, name, password from crochet_user where name = $1 and password = $2", username, password)
+	err := db.QueryRow(context.Background(), "select id, name, password from crochet_user where name = $1 and password = $2", username, password).Scan(&user.Id, &user.Name, &user.Password)
 	if err != nil {
+		fmt.Println()
 		return user, fmt.Errorf("user %s does not exist or wrong password was used", username)
 	}
 
