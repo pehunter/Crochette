@@ -12,30 +12,41 @@ from .models import Pattern, User
 
 
 def cookie(request: HttpRequest):
-    return HttpResponse("u want that cookie? %s" % django.middleware.csrf.get_token(request=request))
+    return HttpResponse(
+        "u want that cookie? %s" % django.middleware.csrf.get_token(request=request)
+    )
 
 
 @require_POST
 def login(request: HttpRequest):
     body = json.loads(request.body)
 
-    #Verify body contains correct parameters
+    # Verify body contains correct parameters
     if "username" not in body or "password" not in body:
-        return HttpResponse(http.HTTPStatus.BAD_REQUEST, "Request was not formatted properly")
+        return HttpResponse(
+            http.HTTPStatus.BAD_REQUEST, "Request was not formatted properly"
+        )
 
     # username, password = (body["username"], body["password"])
 
-    #Issue login request
+    # Issue login request
     print(body["username"], body["password"])
     loggedIn = requests.post("http://localhost:3000/login", json=body)
     print(loggedIn.text)
 
     if loggedIn.status_code == http.HTTPStatus.UNAUTHORIZED:
-        return HttpResponse("This user is already logged in.", status=http.HTTPStatus.UNAUTHORIZED)
+        return HttpResponse(
+            "This user is already logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
     if loggedIn.status_code != http.HTTPStatus.OK:
-        return HttpResponse(loggedIn.status_code, "An error occurred trying to log in.", status=loggedIn.status_code)
+        return HttpResponse(
+            loggedIn.status_code,
+            "An error occurred trying to log in.",
+            status=loggedIn.status_code,
+        )
     else:
         return HttpResponse(loggedIn.text)
+
 
 def addUser(request: HttpRequest):
     # Create the user
