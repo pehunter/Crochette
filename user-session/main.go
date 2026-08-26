@@ -175,7 +175,7 @@ func main() {
 
 	//Make sessions/activeUsers map
 	sessionCount = 0
-	sessionTimeout = time.Second * 18
+	sessionTimeout = time.Minute * 15
 
 	//Connect to Postgres
 	conn, err := pgx.Connect(context.Background(), postgres.GetUrl())

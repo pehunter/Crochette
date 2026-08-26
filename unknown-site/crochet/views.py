@@ -27,12 +27,8 @@ def login(request: HttpRequest):
             http.HTTPStatus.BAD_REQUEST, "Request was not formatted properly"
         )
 
-    # username, password = (body["username"], body["password"])
-
     # Issue login request
-    print(body["username"], body["password"])
-    loggedIn = requests.post("http://localhost:3000/login", json=body)
-    print(loggedIn.text)
+    loggedIn = requests.post("http://sessions:8080/login", json=body)
 
     if loggedIn.status_code == http.HTTPStatus.UNAUTHORIZED:
         return HttpResponse(
@@ -40,7 +36,6 @@ def login(request: HttpRequest):
         )
     if loggedIn.status_code != http.HTTPStatus.OK:
         return HttpResponse(
-            loggedIn.status_code,
             "An error occurred trying to log in.",
             status=loggedIn.status_code,
         )
@@ -48,19 +43,91 @@ def login(request: HttpRequest):
         return HttpResponse(loggedIn.text)
 
 
-def addUser(request: HttpRequest):
-    # Create the user
-    newUser = User()
+@require_POST
+def register(request: HttpRequest):
+    body = json.loads(request.body)
+
+    # Verify body contains correct parameters
+    if "username" not in body or "password" not in body:
+        return HttpResponse(
+            http.HTTPStatus.BAD_REQUEST, "Request was not formatted properly"
+        )
 
     # Save them
-    newUser.save()
+    response = requests.post("http://userinfo:8080/register", json=body)
+    respBody = response.json()
 
-    return HttpResponse(f"New user created @{newUser.id}")
+    match response.status_code:
+        case http.HTTPStatus.CONFLICT:
+            return HttpResponse(
+                "A user with this name already exists.", status=http.HTTPStatus.CONFLICT
+            )
+        case http.HTTPStatus.OK:
+            return HttpResponse(respBody["id"])
+        case _:
+            print(respBody["error"])
+            return HttpResponse("An internal server error occurred.", status=500)
 
 
-def getUsers(request: HttpRequest):
-    users = list(User.objects.all())
-    json = {}
-    for user in users:
-        json[user.pk] = user.name
-    return JsonResponse(json)
+def checkLoggedIn(body: dict) -> int:
+    if "sessionkey" not in body:
+        return -1
+
+    print(f"http://sessions:8080/${body["sessionkey"]}")
+    isLoggedIn = requests.get(f"http://sessions:8080/{body["sessionkey"]}")
+
+    if isLoggedIn.status_code != http.HTTPStatus.OK:
+        print(isLoggedIn.text)
+        return -1
+    else:
+        return int(isLoggedIn.text)
+
+
+def userPatterns(request: HttpRequest, id: int):
+    try:
+        body = json.loads(request.body)
+    except:
+        return HttpResponse("No body was attached.", status=http.HTTPStatus.BAD_REQUEST)
+
+    login = checkLoggedIn(body)
+    if login == -1:
+        return HttpResponse(
+            "You are not currently logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
+
+    response = requests.get(f"http://userinfo:8080/patterns/{id}")
+
+    match response.status_code:
+        case http.HTTPStatus.OK:
+            return HttpResponse(response.text)
+        case _:
+            print(response.text)
+            return HttpResponse(
+                "An error occurred trying to retrieve patterns.",
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+
+def userProgress(request: HttpRequest, id: int):
+    try:
+        body = json.loads(request.body)
+    except:
+        return HttpResponse("No body was attached.", status=http.HTTPStatus.BAD_REQUEST)
+
+    login = checkLoggedIn(body)
+    if login == -1:
+        return HttpResponse(
+            "You are not currently logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
+
+    response = requests.get(f"http://userinfo:8080/progress/{id}")
+
+    match response.status_code:
+        case http.HTTPStatus.OK:
+            return HttpResponse(response.text)
+        case _:
+            print(response.text)
+            return HttpResponse(
+                "An error occurred trying to retrieve progress.",
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            )

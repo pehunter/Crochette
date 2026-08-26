@@ -70,10 +70,16 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -I http://localhost:8000/health | head -n 1 | cut -d ' ' -f 2 | [ \"$(cat)\" = \"200\" ] || exit 1"]
-      interval: 5s
+      interval: 60s
       retries: 10
       timeout: 3s
       start_period: 10s
+    develop:
+      watch:
+        - action: sync
+          path: ./unknown-site/crochet
+          target: /app/crochet
+          initial_sync: true
 
   postgresql:
     image: postgres:latest
