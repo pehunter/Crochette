@@ -125,7 +125,8 @@ func updateProgress(db *pgx.Conn) gin.HandlerFunc {
 		}
 
 		//Return progress
-		c.Status(http.StatusOK)
+		c.JSON(http.StatusOK, gin.H{"id": id})
+
 	}
 }
 

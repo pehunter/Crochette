@@ -73,7 +73,7 @@ def checkLoggedIn(body: dict) -> int:
     if "sessionkey" not in body:
         return -1
 
-    print(f"http://sessions:8080/${body["sessionkey"]}")
+    print(f"http://sessions:8080/{body["sessionkey"]}")
     isLoggedIn = requests.get(f"http://sessions:8080/{body["sessionkey"]}")
 
     if isLoggedIn.status_code != http.HTTPStatus.OK:
@@ -129,5 +129,129 @@ def userProgress(request: HttpRequest, id: int):
             print(response.text)
             return HttpResponse(
                 "An error occurred trying to retrieve progress.",
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+
+def patternDetail(request: HttpRequest, id: int):
+    try:
+        body = json.loads(request.body)
+    except:
+        return HttpResponse("No body was attached.", status=http.HTTPStatus.BAD_REQUEST)
+
+    login = checkLoggedIn(body)
+    if login == -1:
+        return HttpResponse(
+            "You are not currently logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
+
+    response = requests.get(f"http://patterninfo:8080/{id}")
+
+    match response.status_code:
+        case http.HTTPStatus.OK:
+            return HttpResponse(response.text)
+        case _:
+            print(response.text)
+            return HttpResponse(
+                "An error occurred trying to retrieve the pattern.",
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+
+def progressDetail(request: HttpRequest, id: int):
+    try:
+        body = json.loads(request.body)
+    except:
+        return HttpResponse("No body was attached.", status=http.HTTPStatus.BAD_REQUEST)
+
+    login = checkLoggedIn(body)
+    if login == -1:
+        return HttpResponse(
+            "You are not currently logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
+
+    response = requests.get(f"http://progressinfo:8080/{id}")
+
+    match response.status_code:
+        case http.HTTPStatus.OK:
+            return HttpResponse(response.text)
+        case _:
+            print(response.text)
+            return HttpResponse(
+                "An error occurred trying to retrieve the progress.",
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+
+@require_POST
+def createPattern(request: HttpRequest):
+    try:
+        body = json.loads(request.body)
+    except:
+        return HttpResponse("No body was attached.", status=http.HTTPStatus.BAD_REQUEST)
+
+    login = checkLoggedIn(body)
+    if login == -1:
+        return HttpResponse(
+            "You are not currently logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
+
+    if "name" not in body or "steps" not in body:
+        return HttpResponse(
+            "Request was not formatted properly", status=http.HTTPStatus.BAD_REQUEST
+        )
+
+    patternBody = {"name": body["name"], "steps": body["steps"], "creator_id": login}
+    response = requests.post("http://patterninfo:8080/create", json=patternBody)
+
+    match response.status_code:
+        case http.HTTPStatus.OK:
+            return HttpResponse(response.text)
+        case _:
+            print(response.text)
+            return HttpResponse(
+                "An error occurred trying to create the pattern.",
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+
+@require_POST
+def manageProgress(request: HttpRequest):
+    try:
+        body = json.loads(request.body)
+    except:
+        return HttpResponse("No body was attached.", status=http.HTTPStatus.BAD_REQUEST)
+
+    login = checkLoggedIn(body)
+    if login == -1:
+        return HttpResponse(
+            "You are not currently logged in.", status=http.HTTPStatus.UNAUTHORIZED
+        )
+
+    reqBody = {}
+    url = ""
+    if "id" in body and "progress" in body:
+        url = "http://progressinfo:8080/update"
+        reqBody["id"] = body["id"]
+        reqBody["progress"] = body["progress"]
+    elif "progress" in body and "pattern_id" in body:
+        url = "http://progressinfo:8080/create"
+        reqBody["user_id"] = login
+        reqBody["pattern_id"] = body["pattern_id"]
+        reqBody["progress"] = body["progress"]
+    else:
+        return HttpResponse(
+            "Request was not formatted properly", status=http.HTTPStatus.BAD_REQUEST
+        )
+
+    response = requests.post(url, json=reqBody)
+
+    match response.status_code:
+        case http.HTTPStatus.OK:
+            return HttpResponse(response.text)
+        case _:
+            print(response.text)
+            return HttpResponse(
+                "An error occurred trying to create the progress.",
                 status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
             )
