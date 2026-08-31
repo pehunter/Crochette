@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: postgres
+  name: postgres
+  namespace: crochet
+spec:
+  containers:
+    - image: postgres:latest
+      name: postgres
+      volumeMounts:
+        - name: postgres-db-storage
+          mountPath: "var/lib/postgresql/18/docker"
+      envFrom:
+        - configMapRef:
+            name: app-env
+      resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  volumes:
+    - name: postgres-db-storage
+      persistentVolumeClaim:
+        claimName: postgres-claim
+status: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-claim
+  namespace: crochet
+spec:
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
