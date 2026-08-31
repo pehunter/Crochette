@@ -1,38 +1,66 @@
 apiVersion: v1
-kind: Pod
+kind: PersistentVolume
 metadata:
-  labels:
-    run: postgres
-  name: postgres
+  name: postgres-volume
   namespace: crochet
 spec:
-  containers:
-    - image: postgres:latest
-      name: postgres
-      volumeMounts:
-        - name: postgres-db-storage
-          mountPath: "var/lib/postgresql/18/docker"
-      envFrom:
-        - configMapRef:
-            name: app-env
-      resources: {}
-  dnsPolicy: ClusterFirst
-  restartPolicy: Always
-  volumes:
-    - name: postgres-db-storage
-      persistentVolumeClaim:
-        claimName: postgres-claim
-status: {}
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-claim
-  namespace: crochet
-spec:
-  resources:
-    requests:
-      storage: 2Gi
-  storageClassName: ""
+  capacity:
+    storage: 2Gi
+  volumeMode: Filesystem
   accessModes:
     - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/proj/postgres"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-set
+  namespace: crochet
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  serviceName: "postgres-svc"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: postgres
+      namespace: crochet
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:latest
+        ports:
+        - containerPort: 5173
+          name: database
+        volumeMounts:
+        - name: storage
+          mountPath: "var/lib/postgresql/18/docker"
+        envFrom:
+          - configMapRef:
+              name: app-env
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 2Gi
+      storageClassName: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: crochet
+spec:
+  selector:
+    app: postgres
+  clusterIP: None
+  ports:
+  - port: 5173
+    name: database
